@@ -16,6 +16,17 @@ struct Cli {
     title: String,
 }
 
+enum TaskState {
+    Open,
+    InProgress,
+    Done,
+}
+
+struct Task {
+    title: String,
+    state: TaskState,
+}
+
 fn main() -> Result<(), Error> {
     let cli = Cli::try_parse().unwrap_or_else(|error| error.exit());
 
