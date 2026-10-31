@@ -1,10 +1,8 @@
 use clap::Parser;
-use std::{fs, path::PathBuf};
+use std::{env::var, fs, path::PathBuf, process::Command};
 
 use anyhow::{Context, Error, Result};
 use chrono::Local;
-
-mod shared_lib;
 
 #[derive(Parser)]
 #[command(version)]
@@ -41,17 +39,19 @@ fn main() -> Result<(), Error> {
         .replace("{{title}}", cli.title.as_ref())
         .replace("{{date}}", &Local::now().format("%Y-%m-%d").to_string());
 
-    if cli.shared {
-        let out_path = directory
-            .join("shared")
-            .join(format!("\"{}.md\"", cli.title));
-        fs::write(out_path.clone(), out)?;
-        print!("{out_path:?}");
-    } else {
-        let out_path = directory.join(format!("{}.md", cli.title));
-        fs::write(out_path.clone(), out)?;
-        print!("{out_path:?}");
-    }
+    let out_path = match cli.shared {
+        true => directory.join("shared").join(format!("{}.md", cli.title)),
+        false => directory.join(format!("{}.md", cli.title)),
+    };
+
+    fs::write(out_path.clone(), out)?;
+
+    Command::new("hx")
+        .arg("--working-dir")
+        .arg(directory)
+        .arg(out_path)
+        .status()
+        .context("failed running helix")?;
 
     Ok(())
 }
