@@ -1,4 +1,3 @@
-use clap::Parser;
 use std::{fs, path::Path, path::PathBuf};
 
 use anyhow::{Context, Error, Result};
