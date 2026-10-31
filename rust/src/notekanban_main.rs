@@ -142,10 +142,10 @@ fn main() -> Result<(), Error> {
         None => std::env::current_dir().unwrap_or_default(),
     };
 
-    tasks_from_vault(directory)?;
+    tasks_from_vault(directory.clone())?;
 
     color_eyre::install();
-    ratatui::run(|terminal| App::new().run(terminal));
+    ratatui::run(|terminal| App::new(Some(directory)).run(terminal));
 
     Ok(())
 }
@@ -209,6 +209,7 @@ impl TableColors {
 }
 
 struct App {
+    directory: Option<PathBuf>,
     open_state: TableState,
     inprogress_state: TableState,
     done_state: TableState,
@@ -227,9 +228,19 @@ enum SelectedTable {
 }
 
 impl App {
-    fn new() -> Self {
-        let data_vec = generate_notes();
+    fn new(directory: Option<PathBuf>) -> Self {
+        let data_vec = match directory.clone() {
+            Some(p) => {
+                let tasks = tasks_from_vault(p);
+                match tasks {
+                    Ok(v) => v,
+                    Err(_) => generate_notes(),
+                }
+            }
+            None => generate_notes(),
+        };
         Self {
+            directory: directory,
             open_state: TableState::default().with_selected(0),
             inprogress_state: TableState::default(),
             done_state: TableState::default(),
