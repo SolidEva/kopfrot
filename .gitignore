@@ -1,2 +1,4 @@
 rust/target
 .direnv
+.pre-commit-config.yaml
+.env
