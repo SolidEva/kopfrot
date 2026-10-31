@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::ops::DerefMut;
 use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Error, Result};
@@ -89,7 +90,7 @@ use crossterm::event::{self, KeyCode, KeyModifiers};
 use itertools::Itertools;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{self, Color, Modifier, Style, Stylize};
-use ratatui::text::{Line, Text};
+use ratatui::text::Text;
 use ratatui::widgets::{
     Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation,
     ScrollbarState, Table, TableState,
@@ -143,7 +144,10 @@ impl TableColors {
 }
 
 struct App {
-    state: TableState,
+    open_state: TableState,
+    inprogress_state: TableState,
+    done_state: TableState,
+    selected_table: SelectedTable,
     items: Vec<Task>,
     longest_item_lens: (u16, u16, u16), // order is (Open, InProgress, Done)
     scroll_state: ScrollbarState,
@@ -151,11 +155,20 @@ struct App {
     color_index: usize,
 }
 
+enum SelectedTable {
+    Open,
+    InProgress,
+    Done,
+}
+
 impl App {
     fn new() -> Self {
         let data_vec = generate_notes();
         Self {
-            state: TableState::default().with_selected(0),
+            open_state: TableState::default().with_selected(0),
+            inprogress_state: TableState::default(),
+            done_state: TableState::default(),
+            selected_table: SelectedTable::Open,
             longest_item_lens: constraint_len_calculator(&data_vec),
             scroll_state: ScrollbarState::new((data_vec.len() - 1) * ITEM_HEIGHT),
             colors: TableColors::new(&PALETTES[0]),
@@ -165,41 +178,137 @@ impl App {
     }
 
     pub const fn next_row(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.items.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
+        match self.selected_table {
+            SelectedTable::Open => {
+                let i = match self.open_state.selected() {
+                    Some(i) => {
+                        if i >= self.items.len() - 1 {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.open_state.select(Some(i));
+                self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
             }
-            None => 0,
-        };
-        self.state.select(Some(i));
-        self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+            SelectedTable::InProgress => {
+                let i = match self.inprogress_state.selected() {
+                    Some(i) => {
+                        if i >= self.items.len() - 1 {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.inprogress_state.select(Some(i));
+                self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+            }
+            SelectedTable::Done => {
+                let i = match self.done_state.selected() {
+                    Some(i) => {
+                        if i >= self.items.len() - 1 {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.done_state.select(Some(i));
+                self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+            }
+        }
     }
 
     pub const fn previous_row(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.items.len() - 1
-                } else {
-                    i - 1
-                }
+        match self.selected_table {
+            SelectedTable::Open => {
+                let i = match self.open_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            self.items.len() - 1
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.open_state.select(Some(i));
+                self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
             }
-            None => 0,
-        };
-        self.state.select(Some(i));
-        self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+            SelectedTable::InProgress => {
+                let i = match self.inprogress_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            self.items.len() - 1
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.inprogress_state.select(Some(i));
+                self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+            }
+            SelectedTable::Done => {
+                let i = match self.done_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            self.items.len() - 1
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.done_state.select(Some(i));
+                self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+            }
+        }
     }
 
     pub fn next_column(&mut self) {
-        self.state.select_next_column();
+        match self.selected_table {
+            SelectedTable::Open => {
+                self.inprogress_state.select(self.open_state.selected());
+                self.open_state.select(None);
+                self.selected_table = SelectedTable::InProgress;
+            }
+            SelectedTable::InProgress => {
+                self.done_state.select(self.inprogress_state.selected());
+                self.inprogress_state.select(None);
+                self.selected_table = SelectedTable::Done;
+            }
+            SelectedTable::Done => {
+                self.open_state.select(self.done_state.selected());
+                self.done_state.select(None);
+                self.selected_table = SelectedTable::Open;
+            }
+        }
     }
 
     pub fn previous_column(&mut self) {
-        self.state.select_previous_column();
+        match self.selected_table {
+            SelectedTable::Open => {
+                self.done_state.select(self.open_state.selected());
+                self.open_state.select(None);
+                self.selected_table = SelectedTable::Done;
+            }
+            SelectedTable::InProgress => {
+                self.open_state.select(self.inprogress_state.selected());
+                self.inprogress_state.select(None);
+                self.selected_table = SelectedTable::Open;
+            }
+            SelectedTable::Done => {
+                self.inprogress_state.select(self.done_state.selected());
+                self.done_state.select(None);
+                self.selected_table = SelectedTable::InProgress;
+            }
+        }
     }
 
     pub const fn next_color(&mut self) {
@@ -332,7 +441,13 @@ impl App {
         ]))
         .bg(self.colors.buffer_bg)
         .highlight_spacing(HighlightSpacing::Always);
-        frame.render_stateful_widget(t, area, &mut self.state);
+        match task_state {
+            TaskState::Open => frame.render_stateful_widget(t, area, &mut self.open_state),
+            TaskState::InProgress => {
+                frame.render_stateful_widget(t, area, &mut self.inprogress_state)
+            }
+            TaskState::Done => frame.render_stateful_widget(t, area, &mut self.done_state),
+        }
     }
 
     fn render_scrollbar(&mut self, frame: &mut Frame, area: Rect) {
