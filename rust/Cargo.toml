@@ -3,6 +3,14 @@ name = "kopfrot"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "ne"
+path = "src/noteentry_main.rs"
+
+[[bin]]
+name = "nk"
+path = "src/notekanban_main.rs"
+
 [dependencies]
 anyhow = "1.0.104"
 chrono = "0.4.45"
@@ -13,6 +21,8 @@ itertools = "0.15.0"
 ratatui = "0.30.2"
 textwrap = "0.16.4"
 unicode-width = "0.2.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_yaml = "0.9.34"
 
 [dev-dependencies]
 insta = "1.49.0"
