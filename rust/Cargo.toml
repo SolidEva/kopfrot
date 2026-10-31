@@ -11,6 +11,7 @@ color-eyre = "0.6.5"
 crossterm = "0.29.0"
 itertools = "0.15.0"
 ratatui = "0.30.2"
+textwrap = "0.16.4"
 unicode-width = "0.2.3"
 
 [dev-dependencies]

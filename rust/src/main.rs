@@ -89,13 +89,14 @@ use crossterm::event::{self, KeyCode, KeyModifiers};
 use itertools::Itertools;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{self, Color, Modifier, Style, Stylize};
-use ratatui::text::Text;
+use ratatui::text::{Line, Text};
 use ratatui::widgets::{
     Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation,
     ScrollbarState, Table, TableState,
 };
 use ratatui::{DefaultTerminal, Frame};
 use style::palette::tailwind;
+use textwrap::{fill, wrap};
 use unicode_width::UnicodeWidthStr;
 
 const PALETTES: [tailwind::Palette; 4] = [
@@ -285,6 +286,11 @@ impl App {
             .collect::<Row>()
             .style(header_style)
             .height(1);
+        let width = match task_state {
+            TaskState::Open => self.longest_item_lens.0 + 1,
+            TaskState::InProgress => self.longest_item_lens.1 + 1,
+            TaskState::Done => self.longest_item_lens.2 + 1,
+        };
         let rows = self
             .items
             .iter()
@@ -297,23 +303,21 @@ impl App {
                 };
                 let item = data.ref_array();
                 item.into_iter()
-                    .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
+                    .map(|content| {
+                        let wrapped_lines = fill(content, 30);
+                        Cell::from(Text::from(format!("\n{wrapped_lines}\n")))
+                    })
                     .map(|cell| cell)
                     .collect::<Row>()
                     .style(Style::new().fg(self.colors.row_fg).bg(color))
                     .height(4)
             });
         let bar = " █ ";
-        let width = match task_state {
-            TaskState::Open => Constraint::Min(self.longest_item_lens.0 + 1),
-            TaskState::InProgress => Constraint::Min(self.longest_item_lens.1 + 1),
-            TaskState::Done => Constraint::Min(self.longest_item_lens.2 + 1),
-        };
         let t = Table::new(
             rows,
             [
                 // + 1 is for padding.
-                width,
+                Constraint::Min(width),
             ],
         )
         .header(header)
@@ -364,21 +368,21 @@ impl App {
 
 fn generate_notes() -> Vec<Task> {
     let mut new_task = Task {
-        title: "Drifter".to_string(),
+        title: "Drifter is such a booty dog yahoo toodly doo".to_string(),
         state: TaskState::InProgress,
     };
 
     let mut dummy: Vec<Task> = vec![new_task.clone()];
 
-    new_task.title = "Victor".to_string();
+    new_task.title = "Victor is for fujos especially Paige who likes to yaoi".to_string();
     dummy.push(new_task.clone());
 
     new_task.state = TaskState::Open;
-    new_task.title = "Silver".to_string();
+    new_task.title = "Silver is great, for obvious reasons I think".to_string();
     dummy.push(new_task.clone());
 
     new_task.state = TaskState::Done;
-    new_task.title = "Abrams".to_string();
+    new_task.title = "Abrams is tanky like everybody else with good cc".to_string();
     dummy.push(new_task.clone());
 
     dummy
