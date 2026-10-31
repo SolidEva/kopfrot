@@ -16,14 +16,14 @@ struct Cli {
     title: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 enum TaskState {
     Open,
     InProgress,
     Done,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct Task {
     title: String,
     state: TaskState,
@@ -251,20 +251,17 @@ impl App {
             ])
             .split(outer_layout[0]);
 
-        // let layout = Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
-        // let rects = frame.area().layout_vec(&outer_layout);
-
         self.set_colors();
 
-        self.render_open(frame, inner_layout[0]);
-        self.render_inprogress(frame, inner_layout[1]);
-        self.render_done(frame, inner_layout[2]);
+        self.render_table(frame, inner_layout[0], TaskState::Open);
+        self.render_table(frame, inner_layout[1], TaskState::InProgress);
+        self.render_table(frame, inner_layout[2], TaskState::Done);
 
-        // self.render_table(frame, rects[0]);
-        // self.render_scrollbar(frame, rects[0]);
+        // self.render_scrollbar(frame, outer_layout[0]);
         self.render_footer(frame, outer_layout[1]);
     }
-    fn render_open(&mut self, frame: &mut Frame, area: Rect) {
+
+    fn render_table(&mut self, frame: &mut Frame, area: Rect, task_state: TaskState) {
         let header_style = Style::default()
             .fg(self.colors.header_fg)
             .bg(self.colors.header_bg);
@@ -276,7 +273,13 @@ impl App {
             .add_modifier(Modifier::REVERSED)
             .fg(self.colors.selected_cell_style_fg);
 
-        let header = ["Open"]
+        let head = match task_state {
+            TaskState::Open => "Open",
+            TaskState::InProgress => "In Progress",
+            TaskState::Done => "Done",
+        };
+
+        let header = [head]
             .into_iter()
             .map(Cell::from)
             .collect::<Row>()
@@ -286,7 +289,7 @@ impl App {
             .items
             .iter()
             .enumerate()
-            .filter(|task| matches!(task.1.state, TaskState::Open))
+            .filter(|task| task.1.state.clone() == task_state)
             .map(|(i, data)| {
                 let color = match i % 2 {
                     0 => self.colors.normal_row_color,
@@ -301,11 +304,16 @@ impl App {
                     .height(4)
             });
         let bar = " █ ";
+        let width = match task_state {
+            TaskState::Open => Constraint::Min(self.longest_item_lens.0 + 1),
+            TaskState::InProgress => Constraint::Min(self.longest_item_lens.1 + 1),
+            TaskState::Done => Constraint::Min(self.longest_item_lens.2 + 1),
+        };
         let t = Table::new(
             rows,
             [
                 // + 1 is for padding.
-                Constraint::Min(self.longest_item_lens.0 + 1),
+                width,
             ],
         )
         .header(header)
@@ -322,179 +330,6 @@ impl App {
         .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut self.state);
     }
-
-    fn render_inprogress(&mut self, frame: &mut Frame, area: Rect) {
-        let header_style = Style::default()
-            .fg(self.colors.header_fg)
-            .bg(self.colors.header_bg);
-        let selected_row_style = Style::default()
-            .add_modifier(Modifier::REVERSED)
-            .fg(self.colors.selected_row_style_fg);
-        let selected_col_style = Style::default().fg(self.colors.selected_column_style_fg);
-        let selected_cell_style = Style::default()
-            .add_modifier(Modifier::REVERSED)
-            .fg(self.colors.selected_cell_style_fg);
-
-        let header = ["In Progress"]
-            .into_iter()
-            .map(Cell::from)
-            .collect::<Row>()
-            .style(header_style)
-            .height(1);
-        let rows = self
-            .items
-            .iter()
-            .enumerate()
-            .filter(|task| matches!(task.1.state, TaskState::InProgress))
-            .map(|(i, data)| {
-                let color = match i % 2 {
-                    0 => self.colors.normal_row_color,
-                    _ => self.colors.alt_row_color,
-                };
-                let item = data.ref_array();
-                item.into_iter()
-                    .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
-                    .map(|cell| cell)
-                    .collect::<Row>()
-                    .style(Style::new().fg(self.colors.row_fg).bg(color))
-                    .height(4)
-            });
-        let bar = " █ ";
-        let t = Table::new(
-            rows,
-            [
-                // + 1 is for padding.
-                Constraint::Min(self.longest_item_lens.1 + 1),
-            ],
-        )
-        .header(header)
-        .row_highlight_style(selected_row_style)
-        .column_highlight_style(selected_col_style)
-        .cell_highlight_style(selected_cell_style)
-        .highlight_symbol(Text::from(vec![
-            "".into(),
-            bar.into(),
-            bar.into(),
-            "".into(),
-        ]))
-        .bg(self.colors.buffer_bg)
-        .highlight_spacing(HighlightSpacing::Always);
-        frame.render_stateful_widget(t, area, &mut self.state);
-    }
-
-    fn render_done(&mut self, frame: &mut Frame, area: Rect) {
-        let header_style = Style::default()
-            .fg(self.colors.header_fg)
-            .bg(self.colors.header_bg);
-        let selected_row_style = Style::default()
-            .add_modifier(Modifier::REVERSED)
-            .fg(self.colors.selected_row_style_fg);
-        let selected_col_style = Style::default().fg(self.colors.selected_column_style_fg);
-        let selected_cell_style = Style::default()
-            .add_modifier(Modifier::REVERSED)
-            .fg(self.colors.selected_cell_style_fg);
-
-        let header = ["Done"]
-            .into_iter()
-            .map(Cell::from)
-            .collect::<Row>()
-            .style(header_style)
-            .height(1);
-        let rows = self
-            .items
-            .iter()
-            .enumerate()
-            .filter(|task| matches!(task.1.state, TaskState::Done))
-            .map(|(i, data)| {
-                let color = match i % 2 {
-                    0 => self.colors.normal_row_color,
-                    _ => self.colors.alt_row_color,
-                };
-                let item = data.ref_array();
-                item.into_iter()
-                    .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
-                    .map(|cell| cell)
-                    .collect::<Row>()
-                    .style(Style::new().fg(self.colors.row_fg).bg(color))
-                    .height(4)
-            });
-        let bar = " █ ";
-        let t = Table::new(
-            rows,
-            [
-                // + 1 is for padding.
-                Constraint::Min(self.longest_item_lens.2 + 1),
-            ],
-        )
-        .header(header)
-        .row_highlight_style(selected_row_style)
-        .column_highlight_style(selected_col_style)
-        .cell_highlight_style(selected_cell_style)
-        .highlight_symbol(Text::from(vec![
-            "".into(),
-            bar.into(),
-            bar.into(),
-            "".into(),
-        ]))
-        .bg(self.colors.buffer_bg)
-        .highlight_spacing(HighlightSpacing::Always);
-        frame.render_stateful_widget(t, area, &mut self.state);
-    }
-    // fn render_table(&mut self, frame: &mut Frame, area: Rect) {
-    //     let header_style = Style::default()
-    //         .fg(self.colors.header_fg)
-    //         .bg(self.colors.header_bg);
-    //     let selected_row_style = Style::default()
-    //         .add_modifier(Modifier::REVERSED)
-    //         .fg(self.colors.selected_row_style_fg);
-    //     let selected_col_style = Style::default().fg(self.colors.selected_column_style_fg);
-    //     let selected_cell_style = Style::default()
-    //         .add_modifier(Modifier::REVERSED)
-    //         .fg(self.colors.selected_cell_style_fg);
-
-    //     let header = ["Open", "In Progress", "Done"]
-    //         .into_iter()
-    //         .map(Cell::from)
-    //         .collect::<Row>()
-    //         .style(header_style)
-    //         .height(1);
-    //     let rows = self.items.iter().enumerate().map(|(i, data)| {
-    //         let color = match i % 2 {
-    //             0 => self.colors.normal_row_color,
-    //             _ => self.colors.alt_row_color,
-    //         };
-    //         let item = data.ref_array();
-    //         item.into_iter()
-    //             .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
-    //             .map(|cell| cell)
-    //             .collect::<Row>()
-    //             .style(Style::new().fg(self.colors.row_fg).bg(color))
-    //             .height(4)
-    //     });
-    //     let bar = " █ ";
-    //     let t = Table::new(
-    //         rows,
-    //         [
-    //             // + 1 is for padding.
-    //             Constraint::Min(self.longest_item_lens.0 + 1),
-    //             Constraint::Min(self.longest_item_lens.1 + 1),
-    //             Constraint::Length(self.longest_item_lens.2 + 1),
-    //         ],
-    //     )
-    //     .header(header)
-    //     .row_highlight_style(selected_row_style)
-    //     .column_highlight_style(selected_col_style)
-    //     .cell_highlight_style(selected_cell_style)
-    //     .highlight_symbol(Text::from(vec![
-    //         "".into(),
-    //         bar.into(),
-    //         bar.into(),
-    //         "".into(),
-    //     ]))
-    //     .bg(self.colors.buffer_bg)
-    //     .highlight_spacing(HighlightSpacing::Always);
-    //     frame.render_stateful_widget(t, area, &mut self.state);
-    // }
 
     fn render_scrollbar(&mut self, frame: &mut Frame, area: Rect) {
         frame.render_stateful_widget(
