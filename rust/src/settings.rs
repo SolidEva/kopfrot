@@ -12,6 +12,7 @@ pub struct Settings {
 pub fn load_config(config_file: Option<&Path>) -> Result<Settings, Error> {
     let mut conf = Config::builder()
         .add_source(config::File::from(Path::new("~/.config/kopfrot/config.toml")).required(false))
+        .add_source(config::File::from(Path::new("/etc/xdg/kopfrot/config.toml")).required(false))
         .add_source(config::File::from(Path::new(".kopfrot.toml")).required(false));
 
     conf = match config_file {
@@ -29,7 +30,7 @@ pub fn load_config(config_file: Option<&Path>) -> Result<Settings, Error> {
             "failed to deserialize settings conf {conf:?}, did you create a config file?"
         ));
 
-    println!("{:?}", settings);
+    // println!("{:?}", settings);
 
     settings
 }
