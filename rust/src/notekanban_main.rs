@@ -37,8 +37,8 @@ use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{self, Color, Modifier, Style, Stylize};
 use ratatui::text::Text;
 use ratatui::widgets::{
-    Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation,
-    ScrollbarState, Table, TableState,
+    Block, BorderType, Cell, Clear, HighlightSpacing, Paragraph, Row, Scrollbar,
+    ScrollbarOrientation, ScrollbarState, Table, TableState,
 };
 use ratatui::{DefaultTerminal, Frame};
 use style::palette::tailwind;
@@ -53,7 +53,7 @@ const PALETTES: [tailwind::Palette; 4] = [
 ];
 const INFO_TEXT: [&str; 2] = [
     "(Esc) quit | (↑) move up | (↓) move down | (←) move left | (→) move right",
-    "(Shift + →) next color | (Shift + ←) previous color",
+    "(/) filter | (Shift + →) next color | (Shift + ←) previous color",
 ];
 
 const ITEM_HEIGHT: usize = 4;
@@ -89,6 +89,7 @@ impl TableColors {
 }
 
 struct App {
+    show_search: bool,
     directory: Option<PathBuf>,
     open_state: TableState,
     inprogress_state: TableState,
@@ -120,6 +121,7 @@ impl App {
             None => generate_notes(),
         };
         Self {
+            show_search: false,
             directory: directory,
             open_state: TableState::default().with_selected(0),
             inprogress_state: TableState::default(),
@@ -296,6 +298,7 @@ impl App {
                     }
                     KeyCode::Char('l') | KeyCode::Right => self.next_column(),
                     KeyCode::Char('h') | KeyCode::Left => self.previous_column(),
+                    KeyCode::Char('/') => self.show_search = !self.show_search,
                     _ => {}
                 }
             }
@@ -325,6 +328,32 @@ impl App {
 
         // self.render_scrollbar(frame, outer_layout[0]);
         self.render_footer(frame, outer_layout[1]);
+
+        if self.show_search {
+            let popup_block = Block::bordered().title("Filter");
+            let centered_area = frame
+                .area()
+                .centered(Constraint::Percentage(60), Constraint::Percentage(40));
+            // clears out any background in the area before rendering the popup
+
+            let search_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(vec![Constraint::Length(4), Constraint::Min(5)])
+                .split(centered_area);
+
+            frame.render_widget(Clear, centered_area);
+            let paragraph = Paragraph::new("Lorem ipsum").block(popup_block).style(
+                Style::new()
+                    .fg(self.colors.row_fg)
+                    .bg(self.colors.alt_row_color),
+            );
+            frame.render_widget(paragraph.clone(), search_layout[0]);
+            frame.render_widget(paragraph, search_layout[1]);
+
+            // another solution is to use the inner area of the block
+            // let inner_area = popup_block.inner(centered_area);
+            // frame.render_widget(your_widget, inner_area);
+        }
     }
 
     fn render_table(&mut self, frame: &mut Frame, area: Rect, task_state: task::TaskState) {
