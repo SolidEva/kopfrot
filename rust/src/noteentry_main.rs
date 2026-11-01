@@ -12,8 +12,9 @@ struct Cli {
     directory: Option<PathBuf>,
     #[clap(long, short)]
     shared: bool,
-    notetype: String,
-    title: String,
+    // if no notetype or title passed in, assume we are making or opening the daily note
+    notetype: Option<String>,
+    title: Option<String>,
 }
 
 fn main() -> Result<(), Error> {
@@ -24,11 +25,29 @@ fn main() -> Result<(), Error> {
         None => std::env::current_dir().unwrap_or_default(),
     };
 
+    let notetype_str = match cli.notetype {
+        Some(notetype_str) => notetype_str,
+        None => "daily".to_string(),
+    };
+
+    let title_str = match cli.title {
+        Some(title_str) => title_str,
+        None => {
+            if notetype_str != "daily" {
+                panic!("title must be set if notetype is not 'daily'");
+            }
+            format!(
+                "Daily Note {}",
+                &Local::now().format("%Y-%m-%d").to_string()
+            )
+        }
+    };
+
     let template_dir = directory.join("shared/.templates");
     template_dir
         .try_exists()
         .context(format!("{template_dir:?} does not exist"))?;
-    let template_file = template_dir.join(format!(".{}.template", cli.notetype));
+    let template_file = template_dir.join(format!(".{}.template", notetype_str));
     template_file
         .try_exists()
         .context(format!("{template_file:?} does not exist"))?;
@@ -36,15 +55,17 @@ fn main() -> Result<(), Error> {
     let template = fs::read_to_string(template_file.clone())
         .context(format!("unable to read {template_file:?}"))?;
     let out = template
-        .replace("{{title}}", cli.title.as_ref())
+        .replace("{{title}}", title_str.as_ref())
         .replace("{{date}}", &Local::now().format("%Y-%m-%d").to_string());
 
     let out_path = match cli.shared {
-        true => directory.join("shared").join(format!("{}.md", cli.title)),
-        false => directory.join(format!("{}.md", cli.title)),
+        true => directory.join("shared").join(format!("{}.md", title_str)),
+        false => directory.join(format!("{}.md", title_str)),
     };
 
-    fs::write(out_path.clone(), out)?;
+    if !out_path.try_exists()? {
+        fs::write(out_path.clone(), out)?;
+    }
 
     Command::new("hx")
         .arg("--working-dir")
