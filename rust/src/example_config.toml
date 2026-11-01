@@ -1,0 +1,3 @@
+# paths must be absolute, no ~/ or ./ or ../ or etc
+vault_directory="/home/eva/note/"
+template_directory="/home/eva/note/shared/.templates/"

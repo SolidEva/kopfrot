@@ -23,6 +23,7 @@ textwrap = "0.16.4"
 unicode-width = "0.2.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_yaml = "0.9.34"
+config = "0.15.27"
 
 [dev-dependencies]
 insta = "1.49.0"
