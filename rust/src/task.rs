@@ -2,7 +2,7 @@ use std::{fs, path::Path, path::PathBuf};
 
 use anyhow::{Context, Error, Result};
 use serde::{Deserialize, Serialize};
-use serde_yaml;
+use serde_yaml::{Mapping, mapping::Keys};
 
 use crate::note;
 
@@ -29,6 +29,8 @@ pub struct Task {
     pub title: String,
     pub state: TaskState,
     pub path: PathBuf,
+    pub tags: Vec<String>,
+    pub properties: Option<Mapping>,
 }
 
 impl Task {
@@ -50,6 +52,11 @@ impl Task {
 
         let state = TaskState::from_string(&state_str)?;
 
+        let properties = match raw.properties.as_mapping() {
+            Some(map) => Some(map.to_owned()),
+            None => None,
+        };
+
         // first heading on note is assumed to be the title
         let title = raw
             .content
@@ -61,7 +68,22 @@ impl Task {
             .context("unable to remove prefix from title line")?
             .to_string();
 
-        Ok(Some(Task { title, state, path }))
+        let tags: Vec<String> = raw
+            .content
+            .lines()
+            .filter(|line| {
+                line.starts_with("#") && !char::is_whitespace(line.chars().next().unwrap_or(' '))
+            })
+            .map(|value| value.to_string())
+            .collect();
+
+        Ok(Some(Task {
+            title,
+            state,
+            path,
+            properties,
+            tags,
+        }))
     }
 
     pub const fn ref_array(&self) -> [&String; 1] {
