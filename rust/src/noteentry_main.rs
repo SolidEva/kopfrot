@@ -13,7 +13,7 @@ struct Cli {
     #[arg(short, long)]
     config: Option<PathBuf>,
     #[clap(long, short)]
-    shared: bool,
+    subdir: Option<String>,
     // if no notetype or title passed in, assume we are making or opening the daily note
     notetype: Option<String>,
     title: Option<String>,
@@ -57,12 +57,12 @@ fn main() -> Result<(), Error> {
         .replace("{{title}}", title_str.as_ref())
         .replace("{{date}}", &Local::now().format("%Y-%m-%d").to_string());
 
-    let out_path = match cli.shared {
-        true => conf
+    let out_path = match cli.subdir {
+        None => conf.vault_directory.join(format!("{}.md", title_str)),
+        Some(dir) => conf
             .vault_directory
-            .join("shared")
+            .join(dir)
             .join(format!("{}.md", title_str)),
-        false => conf.vault_directory.join(format!("{}.md", title_str)),
     };
 
     if !out_path.try_exists()? {
