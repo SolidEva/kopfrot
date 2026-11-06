@@ -3,7 +3,7 @@ use config::Config;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub vault_directory: PathBuf,
     pub template_directory: PathBuf,

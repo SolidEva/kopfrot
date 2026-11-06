@@ -1,7 +1,7 @@
-use anyhow::{Context, Error, Result};
+use anyhow::{Context, Error, Result, anyhow};
 use clap::Parser;
 use std::ops::DerefMut;
-use std::{path::Path, path::PathBuf};
+use std::{path::Path, path::PathBuf, process::Command};
 
 mod note;
 mod settings;
@@ -26,19 +26,20 @@ fn main() -> Result<(), Error> {
     let conf = settings::load_config(cli.config.as_deref())?;
 
     let directory = match cli.subdir {
-        None => conf.vault_directory,
-        Some(dir) => conf.vault_directory.join(dir),
+        None => conf.vault_directory.clone(),
+        Some(dir) => conf.vault_directory.join(dir).clone(),
     };
 
     color_eyre::install();
-    ratatui::run(|terminal| App::new(Some(directory)).run(terminal));
+    while ratatui::run(|terminal| App::new(conf.clone(), Some(directory.clone())).run(terminal))? {
+        // do nothing
+    }
 
     Ok(())
 }
 
 use color_eyre::Result as eyre_Result;
 use crossterm::event::{self, KeyCode, KeyModifiers};
-use itertools::Itertools;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{self, Color, Modifier, Style, Stylize};
 use ratatui::text::Text;
@@ -58,7 +59,7 @@ const PALETTES: [tailwind::Palette; 4] = [
     tailwind::RED,
 ];
 const INFO_TEXT: [&str; 2] = [
-    "(Esc) quit | (↑) move up | (↓) move down | (←) move left | (→) move right",
+    "(Esc) quit | (Enter) launch editor |(↑) move up | (↓) move down | (←) move left | (→) move right",
     "(/) filter | (Shift + →) next color | (Shift + ←) previous color",
 ];
 
@@ -96,10 +97,14 @@ impl TableColors {
 
 struct App {
     show_search: bool,
+    conf: settings::Settings,
     directory: Option<PathBuf>,
     open_state: TableState,
+    open_items: Vec<Task>,
     inprogress_state: TableState,
+    inprogress_items: Vec<Task>,
     done_state: TableState,
+    done_items: Vec<Task>,
     selected_table: SelectedTable,
     items: Vec<task::Task>,
     longest_item_lens: (u16, u16, u16), // order is (Open, InProgress, Done)
@@ -114,8 +119,16 @@ enum SelectedTable {
     Done,
 }
 
+fn enumerate_items(items: &Vec<Task>, task_state: task::TaskState) -> Vec<Task> {
+    items
+        .iter()
+        .filter(|task| task.state == task_state)
+        .cloned()
+        .collect()
+}
+
 impl App {
-    fn new(directory: Option<PathBuf>) -> Self {
+    fn new(conf: settings::Settings, directory: Option<PathBuf>) -> Self {
         let data_vec = match directory.clone() {
             Some(p) => {
                 let tasks = task::tasks_from_vault(p);
@@ -127,17 +140,61 @@ impl App {
             None => generate_notes(),
         };
         Self {
+            conf,
             show_search: false,
             directory: directory,
             open_state: TableState::default().with_selected(0),
+            open_items: enumerate_items(&data_vec, task::TaskState::Open),
             inprogress_state: TableState::default(),
+            inprogress_items: enumerate_items(&data_vec, task::TaskState::InProgress),
             done_state: TableState::default(),
+            done_items: enumerate_items(&data_vec, task::TaskState::Done),
             selected_table: SelectedTable::Open,
             longest_item_lens: constraint_len_calculator(&data_vec),
             scroll_state: ScrollbarState::new((data_vec.len() - 1) * ITEM_HEIGHT),
             colors: TableColors::new(&PALETTES[0]),
             color_index: 0,
             items: data_vec,
+        }
+    }
+
+    pub fn run_editor(&self) -> Result<(), Error> {
+        Command::new("hx")
+            .arg("--working-dir")
+            .arg(self.conf.vault_directory.clone())
+            .arg(self.current_selected_item()?.path.clone())
+            .status()
+            .context("failed running helix")?;
+
+        Ok(())
+    }
+
+    pub fn current_selected_item(&self) -> Result<&Task, anyhow::Error> {
+        match self.selected_table {
+            SelectedTable::Open => Ok(self
+                .open_items
+                .get(
+                    self.open_state
+                        .selected()
+                        .context("invalid selected item index in open_state")?,
+                )
+                .context("no item for index in open_items")?),
+            SelectedTable::InProgress => Ok(self
+                .inprogress_items
+                .get(
+                    self.inprogress_state
+                        .selected()
+                        .context("invalid selected item index in inprogress_state")?,
+                )
+                .context("no item for index in inprogress_items")?),
+            SelectedTable::Done => Ok(self
+                .done_items
+                .get(
+                    self.done_state
+                        .selected()
+                        .context("invalid selected item index in done_state")?,
+                )
+                .context("no item for index in done_items")?),
         }
     }
 
@@ -288,14 +345,14 @@ impl App {
         self.colors = TableColors::new(&PALETTES[self.color_index]);
     }
 
-    fn run(mut self, terminal: &mut DefaultTerminal) -> eyre_Result<()> {
+    fn run(mut self, terminal: &mut DefaultTerminal) -> eyre_Result<bool, Error> {
         loop {
             terminal.draw(|frame| self.render(frame))?;
 
             if let Some(key) = event::read()?.as_key_press_event() {
                 let shift_pressed = key.modifiers.contains(KeyModifiers::SHIFT);
                 match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
+                    KeyCode::Char('q') | KeyCode::Esc => return Ok(false),
                     KeyCode::Char('j') | KeyCode::Down => self.next_row(),
                     KeyCode::Char('k') | KeyCode::Up => self.previous_row(),
                     KeyCode::Char('L') | KeyCode::Right if shift_pressed => self.next_color(),
@@ -305,6 +362,15 @@ impl App {
                     KeyCode::Char('l') | KeyCode::Right => self.next_column(),
                     KeyCode::Char('h') | KeyCode::Left => self.previous_column(),
                     KeyCode::Char('/') => self.show_search = !self.show_search,
+                    KeyCode::Enter => {
+                        // getting ratatui to redraw everything is hard
+                        // and we would need to refresh for file changes anyway
+                        // so lets be lazy and just die and re-open ourselves if on editor exit
+                        // https://github.com/ratatui/ratatui/issues/1606
+                        // TODO: it would be nice if the row/colomn index is remembered between editor cycles
+                        self.run_editor()?;
+                        return Ok(true);
+                    }
                     _ => {}
                 }
             }
@@ -386,32 +452,35 @@ impl App {
             .collect::<Row>()
             .style(header_style)
             .height(1);
+
+        //TODO: table state and items should be stored in a struct together so we can pass that it, or look this up once
         let width = match task_state {
             task::TaskState::Open => self.longest_item_lens.0 + 1,
             task::TaskState::InProgress => self.longest_item_lens.1 + 1,
             task::TaskState::Done => self.longest_item_lens.2 + 1,
         };
-        let rows = self
-            .items
-            .iter()
-            .enumerate()
-            .filter(|task| task.1.state.clone() == task_state)
-            .map(|(i, data)| {
-                let color = match i % 2 {
-                    0 => self.colors.normal_row_color,
-                    _ => self.colors.alt_row_color,
-                };
-                let item = data.ref_array();
-                item.into_iter()
-                    .map(|content| {
-                        let wrapped_lines = fill(content, 30);
-                        Cell::from(Text::from(format!("\n{wrapped_lines}\n")))
-                    })
-                    .map(|cell| cell)
-                    .collect::<Row>()
-                    .style(Style::new().fg(self.colors.row_fg).bg(color))
-                    .height(4)
-            });
+        let table_items = match task_state {
+            task::TaskState::Open => &self.open_items,
+            task::TaskState::InProgress => &self.inprogress_items,
+            task::TaskState::Done => &self.done_items,
+        };
+
+        let rows = table_items.iter().enumerate().map(|(i, data)| {
+            let color = match i % 2 {
+                0 => self.colors.normal_row_color,
+                _ => self.colors.alt_row_color,
+            };
+            let item = data.ref_array();
+            item.into_iter()
+                .map(|content| {
+                    let wrapped_lines = fill(content, 30);
+                    Cell::from(Text::from(format!("\n{wrapped_lines}\n")))
+                })
+                .map(|cell| cell)
+                .collect::<Row>()
+                .style(Style::new().fg(self.colors.row_fg).bg(color))
+                .height(4)
+        });
         let bar = " █ ";
         let t = Table::new(
             rows,
