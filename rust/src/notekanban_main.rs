@@ -21,6 +21,8 @@ struct Cli {
     subdir: Option<String>,
     #[clap(long, short)]
     exclude_subdir: Option<Vec<String>>,
+    #[clap(long, short)]
+    notetier: Option<Vec<String>>,
 }
 
 fn main() -> Result<(), Error> {
@@ -33,8 +35,17 @@ fn main() -> Result<(), Error> {
     };
 
     let excuded_subdir = match cli.exclude_subdir {
-        None => vec![],
-        Some(dirs) => dirs.iter().map(|dir| directory.join(dir)).collect(),
+        None => None,
+        Some(dirs) => Some(dirs.iter().map(|dir| directory.join(dir)).collect()),
+    };
+
+    let notetiers: Option<Vec<task::NoteTier>> = match cli.notetier {
+        None => None,
+        Some(nts) => Some(
+            nts.iter()
+                .map(|nt| task::NoteTier::from_string(nt).expect("invalid notetier"))
+                .collect(),
+        ),
     };
 
     color_eyre::install();
@@ -42,7 +53,8 @@ fn main() -> Result<(), Error> {
         App::new(
             conf.clone(),
             Some(directory.clone()),
-            Some(excuded_subdir.clone()),
+            excuded_subdir.clone(),
+            notetiers.clone(),
         )
         .run(terminal)
     })? {
@@ -146,10 +158,11 @@ impl App {
         conf: settings::Settings,
         directory: Option<PathBuf>,
         excluded_subdirs: Option<Vec<PathBuf>>,
+        notetiers: Option<Vec<task::NoteTier>>,
     ) -> Self {
         let data_vec = match directory.clone() {
             Some(p) => {
-                let tasks = task::tasks_from_vault(p, excluded_subdirs);
+                let tasks = task::tasks_from_vault(p, excluded_subdirs, notetiers);
                 match tasks {
                     Ok(v) => v,
                     Err(_) => generate_notes(),
@@ -562,8 +575,9 @@ impl App {
 
 fn generate_notes() -> Vec<Task> {
     let mut new_task = Task {
-        properties: None,
+        properties: serde_yaml::Mapping::new(),
         tags: vec![],
+        notetier: task::NoteTier::from_string("task").unwrap(),
         title: "Drifter is such a booty dog yahoo toodly doo".to_string(),
         state: TaskState::InProgress,
         path: Path::new("/fake/path").to_path_buf(),

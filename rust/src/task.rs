@@ -24,13 +24,34 @@ impl TaskState {
     }
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub enum NoteTier {
+    Fleeting,
+    Project,
+    Epic,
+    Task,
+}
+
+impl NoteTier {
+    pub fn from_string(raw_str: &str) -> Result<NoteTier, Error> {
+        match raw_str.to_lowercase().as_str() {
+            "fleeting" => Ok(NoteTier::Fleeting),
+            "project" => Ok(NoteTier::Project),
+            "epic" => Ok(NoteTier::Epic),
+            "task" => Ok(NoteTier::Task),
+            _ => Err(Error::msg(format!("unsupported note type {raw_str}"))),
+        }
+    }
+}
+
 #[derive(PartialEq, Debug, Clone)]
 pub struct Task {
     pub title: String,
     pub state: TaskState,
     pub path: PathBuf,
     pub tags: Vec<String>,
-    pub properties: Option<Mapping>,
+    pub notetier: NoteTier,
+    pub properties: Mapping,
 }
 
 impl Task {
@@ -52,10 +73,10 @@ impl Task {
 
         let state = TaskState::from_string(&state_str)?;
 
-        let properties = match raw.properties.as_mapping() {
-            Some(map) => Some(map.to_owned()),
-            None => None,
-        };
+        let properties = raw
+            .properties
+            .as_mapping()
+            .context("task notes must have properties!")?;
 
         // first heading on note is assumed to be the title
         let title = raw
@@ -77,12 +98,21 @@ impl Task {
             .map(|value| value.to_string())
             .collect();
 
+        let notetier = NoteTier::from_string(
+            properties
+                .get("tier")
+                .context("task notes must have note type!")?
+                .as_str()
+                .context("task notes must have a note type in string form")?,
+        )?;
+
         Ok(Some(Task {
             title,
             state,
             path,
-            properties,
+            properties: properties.to_owned(),
             tags,
+            notetier,
         }))
     }
 
@@ -102,6 +132,7 @@ impl Task {
 pub fn tasks_from_vault(
     directory: PathBuf,
     excluded_subdirs: Option<Vec<PathBuf>>,
+    notetiers: Option<Vec<NoteTier>>,
 ) -> Result<Vec<Task>, Error> {
     let excluded_subdirs = match excluded_subdirs {
         Some(subdirs) => subdirs,
@@ -135,14 +166,20 @@ pub fn tasks_from_vault(
         .filter_map(|path| {
             let res = Task::from_path(path);
             match res {
-                Ok(res) => Some(res),
+                Ok(res) => res,
                 Err(res) => {
                     eprintln!("note at path {path:?} is malformed: {res}");
                     None
                 }
             }
         })
-        .flatten()
+        .filter_map(|task| match &notetiers {
+            None => Some(task),
+            Some(nts) => match nts.contains(&task.notetier.clone()) {
+                true => Some(task),
+                false => None,
+            },
+        })
         .collect::<Vec<Task>>();
     for task in tasks.clone() {
         println!("Read YAML string: {:?}", task);
