@@ -4,6 +4,7 @@ use std::ops::DerefMut;
 use std::{path::Path, path::PathBuf};
 
 mod note;
+mod settings;
 mod task;
 
 use task::{Task, TaskState};
@@ -13,15 +14,20 @@ use task::{Task, TaskState};
 struct Cli {
     /// path to the root of the vault, otherwise assumes we are in the vault
     #[arg(short, long)]
-    directory: Option<PathBuf>,
+    config: Option<PathBuf>,
+    #[clap(long, short)]
+    // directory in the vault, used to limit results to just a subdirectory
+    // optional
+    subdir: Option<String>,
 }
 
 fn main() -> Result<(), Error> {
     let cli = Cli::try_parse().unwrap_or_else(|error| error.exit());
+    let conf = settings::load_config(cli.config.as_deref())?;
 
-    let directory = match cli.directory {
-        Some(directory) => directory,
-        None => std::env::current_dir().unwrap_or_default(),
+    let directory = match cli.subdir {
+        None => conf.vault_directory,
+        Some(dir) => conf.vault_directory.join(dir),
     };
 
     color_eyre::install();
@@ -468,6 +474,8 @@ impl App {
 
 fn generate_notes() -> Vec<Task> {
     let mut new_task = Task {
+        properties: None,
+        tags: vec![],
         title: "Drifter is such a booty dog yahoo toodly doo".to_string(),
         state: TaskState::InProgress,
         path: Path::new("/fake/path").to_path_buf(),
