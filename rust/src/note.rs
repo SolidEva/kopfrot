@@ -33,7 +33,11 @@ impl RawNote {
 }
 
 // adapted from https://stackoverflow.com/questions/26076005/how-can-i-list-files-of-a-directory-in-rust
-pub fn recurse_files(path: impl AsRef<Path>, follow_hidden: bool) -> std::io::Result<Vec<PathBuf>> {
+pub fn recurse_files(
+    path: impl AsRef<Path>,
+    follow_hidden: bool,
+    excluded_subdirs: Vec<PathBuf>,
+) -> std::io::Result<Vec<PathBuf>> {
     let mut buf = vec![];
     let entries = fs::read_dir(path)?;
 
@@ -42,21 +46,20 @@ pub fn recurse_files(path: impl AsRef<Path>, follow_hidden: bool) -> std::io::Re
         let meta = entry.metadata()?;
 
         if meta.is_dir() {
-            if !entry
+            if entry
                 .path()
                 .file_name()
                 .expect("directory does not have a filename")
                 .to_string_lossy()
                 .starts_with(".")
-                || entry
-                    .path()
-                    .file_name()
-                    .expect("directory does not have a file name")
-                    .to_string_lossy()
-                    .starts_with(".")
-                    && follow_hidden == true
+                && follow_hidden == false
             {
-                let mut subdir = recurse_files(entry.path(), follow_hidden)?;
+                // ignore hidden dir
+            } else if excluded_subdirs.contains(&entry.path()) {
+                // ignore excluded subdirs
+            } else {
+                let mut subdir =
+                    recurse_files(entry.path(), follow_hidden, excluded_subdirs.clone())?;
                 buf.append(&mut subdir);
             }
         }

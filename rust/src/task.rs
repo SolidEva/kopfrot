@@ -99,8 +99,16 @@ impl Task {
     }
 }
 
-pub fn tasks_from_vault(directory: PathBuf) -> Result<Vec<Task>, Error> {
-    let note_paths = note::recurse_files(directory, false)?
+pub fn tasks_from_vault(
+    directory: PathBuf,
+    excluded_subdirs: Option<Vec<PathBuf>>,
+) -> Result<Vec<Task>, Error> {
+    let excluded_subdirs = match excluded_subdirs {
+        Some(subdirs) => subdirs,
+        None => vec![],
+    };
+
+    let note_paths = note::recurse_files(directory, false, excluded_subdirs)?
         .iter()
         .filter_map(|path| {
             if path.extension().map_or(false, |ext| ext == "md") {

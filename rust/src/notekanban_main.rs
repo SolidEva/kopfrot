@@ -19,6 +19,8 @@ struct Cli {
     // directory in the vault, used to limit results to just a subdirectory
     // optional
     subdir: Option<String>,
+    #[clap(long, short)]
+    exclude_subdir: Option<Vec<String>>,
 }
 
 fn main() -> Result<(), Error> {
@@ -30,8 +32,20 @@ fn main() -> Result<(), Error> {
         Some(dir) => conf.vault_directory.join(dir).clone(),
     };
 
+    let excuded_subdir = match cli.exclude_subdir {
+        None => vec![],
+        Some(dirs) => dirs.iter().map(|dir| directory.join(dir)).collect(),
+    };
+
     color_eyre::install();
-    while ratatui::run(|terminal| App::new(conf.clone(), Some(directory.clone())).run(terminal))? {
+    while ratatui::run(|terminal| {
+        App::new(
+            conf.clone(),
+            Some(directory.clone()),
+            Some(excuded_subdir.clone()),
+        )
+        .run(terminal)
+    })? {
         // do nothing
     }
 
@@ -128,10 +142,14 @@ fn enumerate_items(items: &Vec<Task>, task_state: task::TaskState) -> Vec<Task> 
 }
 
 impl App {
-    fn new(conf: settings::Settings, directory: Option<PathBuf>) -> Self {
+    fn new(
+        conf: settings::Settings,
+        directory: Option<PathBuf>,
+        excluded_subdirs: Option<Vec<PathBuf>>,
+    ) -> Self {
         let data_vec = match directory.clone() {
             Some(p) => {
-                let tasks = task::tasks_from_vault(p);
+                let tasks = task::tasks_from_vault(p, excluded_subdirs);
                 match tasks {
                     Ok(v) => v,
                     Err(_) => generate_notes(),
@@ -139,6 +157,7 @@ impl App {
             }
             None => generate_notes(),
         };
+        assert!(data_vec.len() > 0, "no entries found!");
         Self {
             conf,
             show_search: false,
